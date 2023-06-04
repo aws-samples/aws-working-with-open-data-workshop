@@ -1,0 +1,168 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: workshop-vpc
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref MainRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  MainRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  Subnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.0.0/24
+      AvailabilityZone: us-west-2a
+      Tags:
+        - Key: Name
+          Value: WorkshopSubnet1
+
+  Subnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: us-west-2b
+      Tags:
+        - Key: Name
+          Value: WorkshopSubnet2
+
+  SubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet1
+      RouteTableId: !Ref MainRouteTable
+
+  SubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet2
+      RouteTableId: !Ref MainRouteTable
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: MySecurityGroup
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 10.0.0.0/16
+
+  SageMakerUserRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SageMakerWorkshopRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - sagemaker.amazonaws.com
+                - sagemaker-geospatial.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AdministratorAccess"
+
+  SageMakerDomain:
+    Type: AWS::SageMaker::Domain
+    Properties:
+      DomainName: workshop-domain
+      AuthMode: IAM
+      DefaultUserSettings:
+        ExecutionRole: !GetAtt SageMakerUserRole.Arn
+      SubnetIds:
+        - !Ref Subnet1
+        - !Ref Subnet2
+      VpcId: !Ref VPC
+
+  SageMakerUserProfile:
+    Type: AWS::SageMaker::UserProfile
+    Properties:
+      DomainId: !Ref SageMakerDomain
+      UserProfileName: workshop-user
+      UserSettings:
+        ExecutionRole: !GetAtt SageMakerUserRole.Arn
+        JupyterServerAppSettings:
+          DefaultResourceSpec:
+            InstanceType: system
+
+  SageMakerStudioJupyter:
+    Type: AWS::SageMaker::App
+    Properties:
+      AppName: default
+      AppType: JupyterServer
+      DomainId: !Ref SageMakerDomain
+      UserProfileName: !Select [0, !Split ["|", !Ref SageMakerUserProfile]]
+
+  SageMakerStudioKernel:
+    Type: AWS::SageMaker::App
+    Properties:
+      AppName: "sagemaker-geospa-ml-geospatial-int-cloudformation"
+      AppType: KernelGateway
+      DomainId: !Ref SageMakerDomain
+      UserProfileName: !Select [0, !Split ["|", !Ref SageMakerUserProfile]]
+      ResourceSpec:
+        InstanceType: "ml.geospatial.interactive"
+        SageMakerImageArn: "arn:aws:sagemaker:us-west-2:081189585635:image/sagemaker-geospatial-v1-0"
+
+  AthenaBucket:
+    Type: AWS::S3::Bucket
+
+  AnalyticsBucket:
+    Type: AWS::S3::Bucket
+
+  ImageBucket:
+    Type: AWS::S3::Bucket
+
+  GlueDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: "workshopdb"
+
+Outputs:
+  SageMakerDomainId:
+    Value: !Ref SageMakerDomain
+    Description: SageMaker Domain ID
+
+  SageMakerUserProfileName:
+    Value: !Ref SageMakerUserProfile
+    Description: Amazon SageMaker Studio user
+
+  ImageBucket:
+    Value: !Ref ImageBucket
+    Description: Image Bucket
+
+  AnalyticsBucket:
+    Value: !Ref AnalyticsBucket
+    Description: Analytics Bucket
