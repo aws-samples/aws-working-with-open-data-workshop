@@ -140,9 +140,6 @@ Resources:
   AnalyticsBucket:
     Type: AWS::S3::Bucket
 
-  ImageBucket:
-    Type: AWS::S3::Bucket
-
   GlueDatabase:
     Type: AWS::Glue::Database
     Properties:
@@ -158,10 +155,6 @@ Outputs:
   SageMakerUserProfileName:
     Value: !Ref SageMakerUserProfile
     Description: Amazon SageMaker Studio user
-
-  ImageBucket:
-    Value: !Ref ImageBucket
-    Description: Image Bucket
 
   AnalyticsBucket:
     Value: !Ref AnalyticsBucket
